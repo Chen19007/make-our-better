@@ -8,3 +8,6 @@ build/
 venv/
 .env
 .claude/
+
+feedback-tools.jsonl
+experience.jsonl

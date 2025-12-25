@@ -1,4 +1,0 @@
-[]
-{"timestamp": "2025-12-25T23:17:13.036219", "tool_name": "make-our-better MCP server", "rating": 5, "feedback": "工具创建成功，配置简单，feedback.jsonl文件追加方式很高效", "context": "测试make_our_better工具"}
-{"timestamp": "2025-12-25T23:17:15.819671", "tool_name": "mcp__allinone__file-edit__file_write", "rating": 5, "feedback": "很好用，简洁直接", "context": "测试make_our_better工具"}
-

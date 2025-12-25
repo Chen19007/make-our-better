@@ -1,1 +1,0 @@
-{"timestamp": "2025-12-25T23:22:33.047031", "tool_name": "mcp__allinone__tmpfile-server", "rating": 5, "feedback": "MCP server 入口点问题已解决。核心问题是 pip 安装的入口点脚本直接调用函数对象，不会自动 await 异步函数。解决方案是创建 __main__.py 包装函数，内部使用 asyncio.run() 调用异步 main()。", "context": ""}

@@ -19,7 +19,8 @@
       "Bash(git remote:*)",
       "Bash(git push:*)",
       "Bash(git branch:*)",
-      "mcp__allinone__file-edit__move_file"
+      "mcp__allinone__file-edit__move_file",
+      "Bash(git add:*)"
     ]
   },
   "mcpServers": {
