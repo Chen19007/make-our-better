@@ -12,7 +12,14 @@
       "mcp__allinone__git__git_diff_unstaged",
       "mcp__allinone__git__git_log",
       "Bash(git init)",
-      "mcp__allinone__git__git_add"
+      "mcp__allinone__git__git_add",
+      "mcp__allinone__git__git_commit",
+      "mcp__allinone__github__get_file_contents",
+      "mcp__allinone__github__create_repository",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "Bash(git branch:*)",
+      "mcp__allinone__file-edit__move_file"
     ]
   },
   "mcpServers": {
