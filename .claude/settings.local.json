@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__allinone__file-edit__list_directory",
+      "mcp__allinone__file-edit__file_append_at_tail",
+      "mcp__allinone__file-edit__directory_create",
+      "mcp__allinone__file-edit__file_write",
+      "mcp__allinone__file-edit__file_find_position",
+      "mcp__allinone__file-edit__file_read",
+      "mcp__allinone__make-our-better__make_our_better",
+      "mcp__allinone__git__git_status",
+      "mcp__allinone__git__git_diff_unstaged",
+      "mcp__allinone__git__git_log",
+      "Bash(git init)",
+      "mcp__allinone__git__git_add"
+    ]
+  },
+  "mcpServers": {
+    "make-our-better": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "E:/project/typescript/make-our-better",
+        "run",
+        "E:/project/typescript/make-our-better/src/make_our_better/server.py"
+      ],
+      "disabled": false
+    }
+  }
+}

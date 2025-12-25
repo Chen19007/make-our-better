@@ -1,0 +1,20 @@
+[project]
+name = "make-our-better"
+version = "0.1.0"
+description = "MCP tool for recording tool usage feedback"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatchling.build]
+include = [
+    "src/make_our_better/**",
+]
