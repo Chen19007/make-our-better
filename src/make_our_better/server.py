@@ -2,6 +2,7 @@
 
 import json
 import re
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -26,19 +27,44 @@ def tokenize(text: str) -> set:
     return {t for t in tokens if len(t) >= 2}
 
 
-def build_index() -> dict[str, list[int]]:
-    """Build inverted index for experience file."""
-    index: dict[str, list[int]] = {}
+def read_all_experiences() -> list[dict]:
+    """Read all experiences from file."""
+    experiences = []
+    if EXPERIENCE_FILE.exists():
+        with open(EXPERIENCE_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        experiences.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+    return experiences
+
+
+def write_all_experiences(experiences: list[dict]) -> None:
+    """Write all experiences to file."""
+    with open(EXPERIENCE_FILE, "w", encoding="utf-8") as f:
+        for entry in experiences:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def build_index() -> dict[str, list[str]]:
+    """Build inverted index for experience file using UUIDs."""
+    index: dict[str, list[str]] = {}
     if not EXPERIENCE_FILE.exists():
         return index
 
     with open(EXPERIENCE_FILE, "r", encoding="utf-8") as f:
-        for line_num, line in enumerate(f, 1):
+        for line in f:
             if not line.strip():
                 continue
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:
+                continue
+
+            entry_id = entry.get("id")
+            if not entry_id:
                 continue
 
             search_text = " ".join([
@@ -52,19 +78,19 @@ def build_index() -> dict[str, list[int]]:
             for token in tokens:
                 if token not in index:
                     index[token] = []
-                if line_num not in index[token]:
-                    index[token].append(line_num)
+                if entry_id not in index[token]:
+                    index[token].append(entry_id)
 
     return index
 
 
-def save_index(index: dict[str, list[int]]) -> None:
+def save_index(index: dict[str, list[str]]) -> None:
     """Save index to file."""
     with open(INDEX_FILE, "w", encoding="utf-8") as f:
         json.dump(index, f, ensure_ascii=False)
 
 
-def load_index() -> dict[str, list[int]]:
+def load_index() -> dict[str, list[str]]:
     """Load index from file."""
     if INDEX_FILE.exists():
         with open(INDEX_FILE, "r", encoding="utf-8") as f:
@@ -132,6 +158,22 @@ async def list_tools() -> list[Tool]:
                 "required": ["query"],
             },
         ),
+        Tool(
+            name="vote_experience",
+            description=(
+                "Vote for an experience that was helpful. Use this when you search and find "
+                "an experience useful for your task. The experience with more votes will appear "
+                "higher in search results. "
+                "Fields: id (required) - the id of the experience to vote for (get from search_experience results)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "description": "The id of the experience to vote for (from search_experience results)"},
+                },
+                "required": ["id"],
+            },
+        ),
     ]
 
 
@@ -144,6 +186,8 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         return await record_experience(arguments)
     elif name == "search_experience":
         return await search_experience(arguments)
+    elif name == "vote_experience":
+        return await vote_experience(arguments)
     return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
 
@@ -184,20 +228,17 @@ async def record_experience(args: dict) -> list[TextContent]:
     keywords = args.get("keywords", "")
     context = args.get("context", "")
 
+    entry_id = str(uuid.uuid4())
     entry = {
+        "id": entry_id,
         "timestamp": datetime.now().isoformat(),
         "title": title,
         "problem": problem,
         "solution": solution,
         "keywords": keywords,
         "context": context,
+        "votes": 0,
     }
-
-    # Find line number for index
-    line_num = 1
-    if EXPERIENCE_FILE.exists():
-        with open(EXPERIENCE_FILE, "r", encoding="utf-8") as f:
-            line_num = sum(1 for _ in f if _.strip()) + 1
 
     # Write entry
     with open(EXPERIENCE_FILE, "a", encoding="utf-8") as f:
@@ -210,8 +251,8 @@ async def record_experience(args: dict) -> list[TextContent]:
     for token in tokens:
         if token not in index:
             index[token] = []
-        if line_num not in index[token]:
-            index[token].append(line_num)
+        if entry_id not in index[token]:
+            index[token].append(entry_id)
     save_index(index)
 
     return [TextContent(type="text", text=f"Experience recorded: '{title}' - stored for future reference")]
@@ -223,59 +264,71 @@ async def search_experience(args: dict) -> list[TextContent]:
     limit = args.get("limit", 5)
 
     if not EXPERIENCE_FILE.exists():
-        return [TextContent(type="text", text="No experiences recorded yet.")]
+        return [TextContent(
+            type="text",
+            text=json.dumps({"results": []}, ensure_ascii=False),
+            mimeType="application/json"
+        )]
 
     query_tokens = tokenize(query)
     if not query_tokens:
-        return [TextContent(type="text", text="No valid search terms found.")]
+        return [TextContent(
+            type="text",
+            text=json.dumps({"results": []}, ensure_ascii=False),
+            mimeType="application/json"
+        )]
 
-    index = load_index()
+    # Build index on every search to ensure real-time updates
+    index = build_index()
     if not index:
         return await linear_search(query, limit)
 
-    # Find matching entries
-    entry_scores: dict[int, int] = {}
+    # Find matching entries using UUIDs
+    entry_scores: dict[str, int] = {}
     for token in query_tokens:
         if token in index:
-            for line_num in index[token]:
-                entry_scores[line_num] = entry_scores.get(line_num, 0) + 1
+            for entry_id in index[token]:
+                entry_scores[entry_id] = entry_scores.get(entry_id, 0) + 1
 
     if not entry_scores:
-        return [TextContent(type="text", text=f"No experiences found matching '{query}'.")]
+        return [TextContent(
+            type="text",
+            text=json.dumps({"results": []}, ensure_ascii=False),
+            mimeType="application/json"
+        )]
 
-    sorted_entries = sorted(entry_scores.items(), key=lambda x: (-x[1], -x[0]))
+    # Read all experiences to get vote counts for sorting
+    all_experiences = read_all_experiences()
+    # Build a map of id -> votes
+    votes_map: dict[str, int] = {}
+    id_to_entry: dict[str, dict] = {}
+    for entry in all_experiences:
+        entry_id = entry.get("id")
+        if entry_id:
+            votes_map[entry_id] = entry.get("votes", 0)
+            id_to_entry[entry_id] = entry
+
+    # Sort by: 1) relevance score (descending), 2) votes (descending)
+    sorted_entries = sorted(entry_scores.items(), key=lambda x: (-x[1], -votes_map.get(x[0], 0)))
     top_entries = dict(sorted_entries[:limit])
 
     results = []
-    with open(EXPERIENCE_FILE, "r", encoding="utf-8") as f:
-        for line_num, line in enumerate(f, 1):
-            if line_num in top_entries:
-                try:
-                    entry = json.loads(line)
-                    entry["_score"] = top_entries[line_num]
-                    results.append(entry)
-                except json.JSONDecodeError:
-                    continue
+    for entry_id, score in top_entries.items():
+        if entry_id in id_to_entry:
+            entry = id_to_entry[entry_id].copy()
+            entry["score"] = score
+            results.append(entry)
 
-    if not results:
-        return [TextContent(type="text", text=f"No experiences found matching '{query}'.")]
-
-    output_lines = [f"Found {len(results)} matching experiences:\n"]
-    for i, entry in enumerate(results, 1):
-        output_lines.append("=" * 60)
-        output_lines.append(f"[{i}] {entry.get('title', 'Untitled')}")
-        output_lines.append(f"Keywords: {entry.get('keywords', 'N/A')}")
-        output_lines.append(f"Problem: {entry.get('problem', '')}")
-        output_lines.append(f"Solution: {entry.get('solution', '')}")
-        output_lines.append(f"Context: {entry.get('context', 'N/A')}")
-        output_lines.append(f"Date: {entry.get('timestamp', '')}")
-        output_lines.append("")
-
-    return [TextContent(type="text", text="\n".join(output_lines))]
+    response_data = {"results": results}
+    return [TextContent(
+        type="text",
+        text=json.dumps(response_data, ensure_ascii=False),
+        mimeType="application/json"
+    )]
 
 
 async def linear_search(query: str, limit: int) -> list[TextContent]:
-    """Fallback linear search."""
+    """Fallback linear search returning JSON format."""
     query_lower = query.lower()
     results = []
 
@@ -298,21 +351,38 @@ async def linear_search(query: str, limit: int) -> list[TextContent]:
             if query_lower in search_text:
                 results.append(entry)
 
-    if not results:
-        return [TextContent(type="text", text=f"No experiences found matching '{query}'.")]
+    # Sort by votes (descending)
+    results.sort(key=lambda x: x.get("votes", 0), reverse=True)
+    results = results[:limit]
 
-    output_lines = [f"Found {len(results)} matching experiences:\n"]
-    for i, entry in enumerate(results, 1):
-        output_lines.append("=" * 60)
-        output_lines.append(f"[{i}] {entry.get('title', 'Untitled')}")
-        output_lines.append(f"Keywords: {entry.get('keywords', 'N/A')}")
-        output_lines.append(f"Problem: {entry.get('problem', '')}")
-        output_lines.append(f"Solution: {entry.get('solution', '')}")
-        output_lines.append(f"Context: {entry.get('context', 'N/A')}")
-        output_lines.append(f"Date: {entry.get('timestamp', '')}")
-        output_lines.append("")
+    response_data = {"results": results}
+    return [TextContent(
+        type="text",
+        text=json.dumps(response_data, ensure_ascii=False),
+        mimeType="application/json"
+    )]
 
-    return [TextContent(type="text", text="\n".join(output_lines))]
+
+async def vote_experience(args: dict) -> list[TextContent]:
+    """Vote for an experience by its id."""
+    entry_id = args.get("id")
+
+    if not entry_id:
+        return [TextContent(type="text", text="Experience id is required to vote.")]
+
+    experiences = read_all_experiences()
+    voted = False
+
+    for entry in experiences:
+        if entry.get("id") == entry_id:
+            entry["votes"] = entry.get("votes", 0) + 1
+            voted = True
+
+    if voted:
+        write_all_experiences(experiences)
+        return [TextContent(type="text", text=f"Voted for experience id: '{entry_id}' - thank you for your feedback!")]
+    else:
+        return [TextContent(type="text", text=f"No experience found with id: '{entry_id}'")]
 
 
 async def main():
