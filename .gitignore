@@ -12,3 +12,4 @@ venv/
 feedback-tools.jsonl
 experience.jsonl
 experience-index.json
+.claude
